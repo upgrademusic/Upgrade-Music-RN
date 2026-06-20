@@ -1,11 +1,10 @@
 import { useState, useEffect } from 'react';
 import { View, Text, FlatList, StyleSheet, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/auth';
-import { Colors, Spacing, Radius } from '@/constants/theme';
+import { Colors, Spacing } from '@/constants/theme';
 
 interface ActivityItem {
   id: string;
@@ -14,7 +13,14 @@ interface ActivityItem {
   metadata: Record<string, any> | null;
 }
 
-export default function ActivityScreen() {
+const ICON: Record<string, string> = {
+  song_request: '🎵',
+  song_boost: '🚀',
+  follow: '👤',
+  reward_earned: '💰',
+};
+
+export default function InboxScreen() {
   const { session } = useAuthStore();
   const [items, setItems] = useState<ActivityItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -48,6 +54,7 @@ export default function ActivityScreen() {
       case 'song_request': return `Requested "${meta?.song_title ?? 'a song'}"`;
       case 'song_boost': return `Boosted "${meta?.song_title ?? 'a song'}"`;
       case 'follow': return `Followed ${meta?.target_name ?? 'someone'}`;
+      case 'reward_earned': return `Earned $${((meta?.reward_cents ?? 0) / 100).toFixed(2)} originator reward`;
       default: return type.replace(/_/g, ' ');
     }
   };
@@ -56,7 +63,7 @@ export default function ActivityScreen() {
     <LinearGradient colors={['#0D0B1A', '#1A1035']} style={styles.gradient}>
       <SafeAreaView style={styles.safe} edges={['top']}>
         <View style={styles.header}>
-          <Text style={styles.title}>Activity</Text>
+          <Text style={styles.title}>Inbox</Text>
         </View>
 
         {loading && <ActivityIndicator color={Colors.purple.DEFAULT} style={{ marginTop: 40 }} />}
@@ -64,8 +71,8 @@ export default function ActivityScreen() {
         {!loading && items.length === 0 && (
           <View style={styles.empty}>
             <Text style={styles.emptyEmoji}>📭</Text>
-            <Text style={styles.emptyTitle}>No activity yet</Text>
-            <Text style={styles.emptyText}>Your song requests and interactions will appear here</Text>
+            <Text style={styles.emptyTitle}>Nothing yet</Text>
+            <Text style={styles.emptyText}>Your activity and notifications will appear here</Text>
           </View>
         )}
 
@@ -75,7 +82,7 @@ export default function ActivityScreen() {
           contentContainerStyle={{ paddingBottom: 100 }}
           renderItem={({ item }) => (
             <View style={styles.row}>
-              <View style={styles.dot} />
+              <Text style={styles.rowIcon}>{ICON[item.type] ?? '🔔'}</Text>
               <View style={styles.rowContent}>
                 <Text style={styles.rowLabel}>{activityLabel(item.type, item.metadata)}</Text>
                 <Text style={styles.rowTime}>{formatTime(item.created_at)}</Text>
@@ -106,7 +113,7 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
     alignItems: 'flex-start',
   },
-  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.purple.DEFAULT, marginTop: 5 },
+  rowIcon: { fontSize: 18, width: 28 },
   rowContent: { flex: 1 },
   rowLabel: { color: Colors.text.primary, fontSize: 14 },
   rowTime: { color: Colors.text.muted, fontSize: 12, marginTop: 3 },

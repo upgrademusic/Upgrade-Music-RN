@@ -25,7 +25,7 @@
     },
     "plugins": [
       "expo-router",
-      "@stripe/stripe-react-native",
+      ["@stripe/stripe-react-native", { "merchantIdentifier": "merchant.io.upgrademusic.app" }],
       "expo-secure-store",
       [
         "expo-splash-screen",

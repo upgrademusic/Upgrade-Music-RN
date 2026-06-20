@@ -17,7 +17,7 @@ export function EventCard({ event, variant = 'story' }: Props) {
   return (
     <TouchableOpacity
       style={variant === 'story' ? styles.story : styles.card}
-      onPress={() => router.push(`/event/${event.id}` as any)}
+      onPress={() => router.push({ pathname: '/(app)/(event)/[id]', params: { id: event.id } } as any)}
       activeOpacity={0.85}
     >
       <Image

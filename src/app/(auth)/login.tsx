@@ -5,7 +5,6 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as WebBrowser from 'expo-web-browser';
-import { makeRedirectUri } from 'expo-auth-session';
 import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '@/lib/supabase';
 import { Colors, Spacing, Radius } from '@/constants/theme';
@@ -18,21 +17,40 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState<'google' | 'email' | null>(null);
   const [mode, setMode] = useState<'login' | 'signup'>('login');
 
-  const redirectUri = makeRedirectUri({ scheme: 'upgrademusic', path: 'auth/callback' });
-
   const handleGoogleLogin = async () => {
     setLoading('google');
     try {
+      if (Platform.OS === 'web') {
+        const { error } = await supabase.auth.signInWithOAuth({
+          provider: 'google',
+          options: { redirectTo: `${window.location.origin}/auth/callback` },
+        });
+        if (error) throw error;
+        return;
+      }
+
+      // Native (including Expo Go): always use the custom scheme.
+      // ASWebAuthenticationSession intercepts custom scheme redirects automatically
+      // even without the scheme being registered — no Expo Go limitation applies.
+      const nativeRedirect = 'upgrademusic://auth/callback';
+
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
-        options: { redirectTo: redirectUri, skipBrowserRedirect: true },
+        options: { redirectTo: nativeRedirect, skipBrowserRedirect: true },
       });
       if (error) throw error;
       if (data.url) {
-        const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUri);
+        const result = await WebBrowser.openAuthSessionAsync(data.url, nativeRedirect);
         if (result.type === 'success') {
-          const { url } = result;
-          await supabase.auth.exchangeCodeForSession(url);
+          const resultUrl = (result as any).url as string;
+          // Implicit flow: Supabase returns tokens in the URL hash fragment
+          const fragment = resultUrl.includes('#') ? resultUrl.split('#')[1] : '';
+          const params = new URLSearchParams(fragment);
+          const access_token = params.get('access_token');
+          const refresh_token = params.get('refresh_token');
+          if (access_token) {
+            await supabase.auth.setSession({ access_token, refresh_token: refresh_token ?? '' });
+          }
         }
       }
     } catch (e: any) {

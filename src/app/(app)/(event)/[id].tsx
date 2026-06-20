@@ -7,7 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useStripe } from '@stripe/stripe-react-native';
+import { usePaymentSheet } from '@/hooks/usePaymentSheet';
 import { useEventQueue, type QueueTrack } from '@/hooks/useEventQueue';
 import { useSongSearch, type SearchSong } from '@/hooks/useSongSearch';
 import { useAuthStore } from '@/store/auth';
@@ -23,11 +23,10 @@ export default function EventDetailScreen() {
   const { user } = useAuthStore();
   const { queue, eventInfo, loading } = useEventQueue(eventId!);
   const { query, setQuery, results, loading: searching } = useSongSearch(eventId!);
-  const { initPaymentSheet, presentPaymentSheet } = useStripe();
+  const { initPaymentSheet, presentPaymentSheet } = usePaymentSheet();
 
   const isDJ = !!(user && eventInfo?.djId && user.id === eventInfo.djId);
 
-  // Bid modal
   const [bidModal, setBidModal] = useState<{
     open: boolean;
     song: SearchSong | null;
@@ -88,7 +87,6 @@ export default function EventDetailScreen() {
     try {
       const song = bidModal.song;
 
-      // 1. Ensure song in DB
       let songId: string | null = null;
       if (song.spotifyId) {
         const { data: existing } = await supabase
@@ -117,7 +115,6 @@ export default function EventDetailScreen() {
       }
       if (!songId) throw new Error('Song not found');
 
-      // 2. Reserve slot via RPC
       const { data: groupId, error: rpcErr } = await supabase.rpc('increment_request_group', {
         p_event_id: eventId,
         p_song_id: songId,
@@ -127,13 +124,11 @@ export default function EventDetailScreen() {
       });
       if (rpcErr) throw rpcErr;
 
-      // 3. Create payment intent
       const { data: piData, error: piErr } = await supabase.functions.invoke('create-payment-intent', {
         body: { event_id: eventId, song_id: songId, amount_cents: amountCents, dj_id: eventInfo?.djId },
       });
 
       if (!piErr && piData?.clientSecret) {
-        // Use Stripe PaymentSheet
         const { error: initError } = await initPaymentSheet({
           merchantDisplayName: 'Upgrade Music',
           paymentIntentClientSecret: piData.clientSecret,
@@ -144,7 +139,6 @@ export default function EventDetailScreen() {
         if (presentError) throw new Error(presentError.message);
       }
 
-      // 4. Insert song_request record
       await supabase.from('song_requests').insert({
         event_id: eventId,
         song_id: songId,
@@ -155,7 +149,6 @@ export default function EventDetailScreen() {
         status: 'queued',
       });
 
-      // 5. Originator reward if boost
       if (bidModal.mode === 'boost' && bidModal.originatorId) {
         const reward = Math.floor(amountCents * 0.05);
         if (reward > 0) {
@@ -226,7 +219,6 @@ export default function EventDetailScreen() {
   return (
     <LinearGradient colors={['#0D0B1A', '#1A1035', '#221845']} style={styles.gradient}>
       <SafeAreaView style={styles.safe}>
-        {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
             <Text style={styles.backArrow}>←</Text>
@@ -245,7 +237,6 @@ export default function EventDetailScreen() {
           )}
         </View>
 
-        {/* Search bar */}
         <View style={styles.searchBar}>
           <Text style={styles.searchIcon}>🔍</Text>
           <TextInput
@@ -263,7 +254,6 @@ export default function EventDetailScreen() {
           )}
         </View>
 
-        {/* Search results overlay */}
         {query.length >= 2 && (
           <View style={styles.searchResults}>
             {searching
@@ -280,7 +270,6 @@ export default function EventDetailScreen() {
           </View>
         )}
 
-        {/* Queue */}
         {query.length < 2 && (
           <>
             <View style={styles.queueHeader}>
@@ -309,7 +298,6 @@ export default function EventDetailScreen() {
           </>
         )}
 
-        {/* Bid Modal */}
         <Modal visible={bidModal.open} transparent animationType="slide">
           <View style={styles.modalOverlay}>
             <View style={styles.modalSheet}>
@@ -488,7 +476,6 @@ const styles = StyleSheet.create({
   emptyQueueEmoji: { fontSize: 40, marginBottom: Spacing.md },
   emptyQueueText: { color: Colors.text.primary, fontSize: 18, fontWeight: '700', marginBottom: Spacing.sm },
   emptyQueueSub: { color: Colors.text.secondary, textAlign: 'center', fontSize: 14 },
-  // Modal
   modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.6)' },
   modalSheet: {
     backgroundColor: Colors.bg.surface,

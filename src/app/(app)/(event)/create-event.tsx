@@ -8,10 +8,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import VenueSearch from '@/components/VenueSearch';
+import VenueMap from '@/components/VenueMap';
 import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/auth';
 import { Colors, Spacing, Radius } from '@/constants/theme';
+
 
 const GENRES = ['Pop', 'Hip-Hop', 'Electronic', 'House', 'Techno', 'R&B', 'Latin', 'Afrobeats', 'Reggaeton', 'Dancehall', 'Funk', 'Soul'];
 
@@ -27,6 +30,16 @@ function formatTime(d: Date) {
 function isEmail(s: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.trim());
 }
+
+type VenuePlace = {
+  name: string;
+  address: string;
+  city: string;
+  country: string;
+  lat: number;
+  lng: number;
+  place_id: string;
+};
 
 type ArtistEntry = {
   key: string;
@@ -122,8 +135,7 @@ export default function CreateEventScreen() {
 
   // Basic fields
   const [name, setName] = useState('');
-  const [venueName, setVenueName] = useState('');
-  const [city, setCity] = useState('');
+  const [venuePlace, setVenuePlace] = useState<VenuePlace | null>(null);
   const [eventDate, setEventDate] = useState<Date | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
@@ -239,11 +251,32 @@ export default function CreateEventScreen() {
 
     setSaving(true);
     try {
+      // Upsert venue record if one was selected
+      let venueId: string | null = null;
+      if (venuePlace && user?.id) {
+        const { data: venueData } = await supabase
+          .from('venues')
+          .upsert({
+            name: venuePlace.name,
+            address: venuePlace.address,
+            city: venuePlace.city,
+            country: venuePlace.country,
+            latitude: venuePlace.lat,
+            longitude: venuePlace.lng,
+            owner_id: user.id,
+            is_active: true,
+          }, { onConflict: 'name,city', ignoreDuplicates: false })
+          .select('id')
+          .single();
+        venueId = venueData?.id ?? null;
+      }
+
       const { data, error } = await supabase
         .from('events')
         .insert({
           name: name.trim(),
           dj_id: user?.id ?? null,
+          venue_id: venueId,
           starts_at: eventDate.toISOString(),
           status: 'draft',
           min_bid_cents: minBidCents,
@@ -316,7 +349,7 @@ export default function CreateEventScreen() {
         <ScrollView
           contentContainerStyle={styles.scroll}
           showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
+          keyboardShouldPersistTaps="always"
         >
 
           <Field label="Event name *">
@@ -329,25 +362,16 @@ export default function CreateEventScreen() {
             />
           </Field>
 
-          <Field label="Venue name">
-            <TextInput
-              style={styles.input}
-              placeholder="e.g. Hive Club"
-              placeholderTextColor={Colors.text.muted}
-              value={venueName}
-              onChangeText={setVenueName}
-            />
-          </Field>
+          {/* ── Venue search ── */}
+          <View style={styles.field}>
+            <Text style={styles.label}>Venue</Text>
+            <VenueSearch onSelect={setVenuePlace} />
 
-          <Field label="City">
-            <TextInput
-              style={styles.input}
-              placeholder="e.g. Zurich"
-              placeholderTextColor={Colors.text.muted}
-              value={city}
-              onChangeText={setCity}
-            />
-          </Field>
+            {/* Map preview */}
+            {venuePlace && (
+              <VenueMap place={venuePlace} onClear={() => setVenuePlace(null)} />
+            )}
+          </View>
 
           {/* Date & Time */}
           <View style={styles.row}>
@@ -787,4 +811,11 @@ const styles = StyleSheet.create({
   pickerCancel: { color: Colors.text.muted, fontSize: 16 },
   pickerDone: { color: Colors.purple.light, fontSize: 16, fontWeight: '700' },
   picker: { backgroundColor: 'transparent' },
+
+  // Venue autocomplete container
+  venueSearchWrap: {
+    borderRadius: Radius.md, overflow: 'visible',
+  },
+
 });
+

@@ -1,24 +1,21 @@
 import 'react-native-url-polyfill/auto';
+import { Platform } from 'react-native';
 import { createClient } from '@supabase/supabase-js';
-import * as SecureStore from 'expo-secure-store';
+import { authStorage } from '@/lib/auth-storage';
 import type { Database } from '@/types/database';
-
-const ExpoSecureStoreAdapter = {
-  getItem: (key: string) => SecureStore.getItemAsync(key),
-  setItem: (key: string, value: string) => SecureStore.setItemAsync(key, value),
-  removeItem: (key: string) => SecureStore.deleteItemAsync(key),
-};
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;
 
 export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   auth: {
-    storage: ExpoSecureStoreAdapter,
+    storage: authStorage,
     autoRefreshToken: true,
     persistSession: true,
-    detectSessionInUrl: false,
-    flowType: 'pkce',
+    detectSessionInUrl: Platform.OS === 'web',
+    // PKCE requires WebCrypto (SHA-256) which is unavailable in Expo Go's RN runtime.
+    // Use implicit flow on native so tokens arrive directly in the redirect URL hash.
+    flowType: Platform.OS === 'web' ? 'pkce' : 'implicit',
   },
 });
 
