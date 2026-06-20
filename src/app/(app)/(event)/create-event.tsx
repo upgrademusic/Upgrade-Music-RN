@@ -256,7 +256,7 @@ export default function CreateEventScreen() {
 
       if (error) throw error;
 
-      // Insert artists
+      // Insert artists then fire invite emails
       if (selectedArtists.length > 0) {
         const rows = selectedArtists.map(a => ({
           event_id: data.id,
@@ -266,8 +266,20 @@ export default function CreateEventScreen() {
           avatar_url: a.avatar_url,
           status: 'pending',
         }));
-        const { error: artistErr } = await (supabase as any).from('event_artists').insert(rows);
-        if (artistErr) console.warn('event_artists insert:', artistErr.message);
+        const { data: insertedArtists, error: artistErr } = await (supabase as any)
+          .from('event_artists')
+          .insert(rows)
+          .select('id');
+        if (artistErr) {
+          console.warn('event_artists insert:', artistErr.message);
+        } else if (insertedArtists) {
+          // Fire invite emails in background — non-blocking so the success alert isn't delayed
+          (insertedArtists as { id: string }[]).forEach(a => {
+            supabase.functions
+              .invoke('send-artist-invite', { body: { event_artist_id: a.id } })
+              .catch((e: any) => console.warn('invite email failed:', e?.message));
+          });
+        }
       }
 
       Alert.alert('Event created!', `"${name}" was saved as a draft.`, [
