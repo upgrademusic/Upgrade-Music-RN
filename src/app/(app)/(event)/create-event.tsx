@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   ScrollView, Alert, ActivityIndicator, Switch, Modal, Platform,
-  FlatList,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -139,6 +138,9 @@ export default function CreateEventScreen() {
   const [artistResults, setArtistResults] = useState<ProfileResult[]>([]);
   const [artistSearching, setArtistSearching] = useState(false);
   const [selectedArtists, setSelectedArtists] = useState<ArtistEntry[]>([]);
+  const [showInvitePanel, setShowInvitePanel] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const inviteInputRef = useRef<TextInput>(null);
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const pickerBaseDate = eventDate ?? new Date();
@@ -147,8 +149,12 @@ export default function CreateEventScreen() {
   useEffect(() => {
     if (searchTimeout.current) clearTimeout(searchTimeout.current);
     const q = artistQuery.trim();
-    if (q.length < 2) { setArtistResults([]); return; }
-
+    if (q.length < 2) {
+      setArtistResults([]);
+      setShowInvitePanel(false);
+      return;
+    }
+    setShowInvitePanel(false);
     searchTimeout.current = setTimeout(async () => {
       setArtistSearching(true);
       const { data } = await supabase
@@ -163,8 +169,7 @@ export default function CreateEventScreen() {
   }, [artistQuery]);
 
   function addArtistFromProfile(p: ProfileResult) {
-    const already = selectedArtists.some(a => a.user_id === p.id);
-    if (already) return;
+    if (selectedArtists.some(a => a.user_id === p.id)) return;
     setSelectedArtists(prev => [...prev, {
       key: p.id,
       user_id: p.id,
@@ -176,10 +181,22 @@ export default function CreateEventScreen() {
     setArtistResults([]);
   }
 
-  function inviteByEmail(email: string) {
-    const norm = email.trim().toLowerCase();
-    const already = selectedArtists.some(a => a.invited_email === norm || a.user_id !== null && false);
-    if (already) return;
+  function openInvitePanel() {
+    setShowInvitePanel(true);
+    setInviteEmail('');
+    setTimeout(() => inviteInputRef.current?.focus(), 50);
+  }
+
+  function sendInvite() {
+    const norm = inviteEmail.trim().toLowerCase();
+    if (!isEmail(norm)) {
+      Alert.alert('Invalid email', 'Please enter a valid email address.');
+      return;
+    }
+    if (selectedArtists.some(a => a.invited_email === norm)) {
+      Alert.alert('Already added', 'This email is already in the list.');
+      return;
+    }
     setSelectedArtists(prev => [...prev, {
       key: `invite-${norm}`,
       user_id: null,
@@ -187,6 +204,8 @@ export default function CreateEventScreen() {
       display_name: norm,
       avatar_url: null,
     }]);
+    setInviteEmail('');
+    setShowInvitePanel(false);
     setArtistQuery('');
     setArtistResults([]);
   }
@@ -264,8 +283,7 @@ export default function CreateEventScreen() {
 
   const hasDate = eventDate !== null;
   const dateHasTime = hasDate && (eventDate.getHours() !== 0 || eventDate.getMinutes() !== 0);
-  const showInviteEmail = artistQuery.trim().length > 0 && isEmail(artistQuery) && artistResults.length === 0 && !artistSearching;
-  const showNoResults = artistQuery.trim().length >= 2 && !artistSearching && artistResults.length === 0 && !isEmail(artistQuery.trim());
+  const showNoResults = artistQuery.trim().length >= 2 && !artistSearching && artistResults.length === 0;
 
   return (
     <LinearGradient colors={['#0D0B1A', '#1A1035']} style={styles.gradient}>
@@ -429,33 +447,54 @@ export default function CreateEventScreen() {
               </View>
             )}
 
-            {/* No results — offer email invite */}
-            {showNoResults && (
-              <View style={styles.dropdown}>
-                <View style={styles.dropdownEmpty}>
-                  <Text style={styles.dropdownEmptyText}>No users found for "{artistQuery.trim()}"</Text>
-                  <Text style={styles.dropdownEmptyHint}>Enter their email address to send an invite.</Text>
+            {/* No results — tappable invite bubble */}
+            {showNoResults && !showInvitePanel && (
+              <TouchableOpacity style={styles.noResultsBubble} onPress={openInvitePanel} activeOpacity={0.8}>
+                <View style={styles.noResultsIconWrap}>
+                  <Ionicons name="person-add-outline" size={20} color={Colors.purple.light} />
                 </View>
-              </View>
+                <View style={styles.noResultsText}>
+                  <Text style={styles.noResultsTitle}>No Upgrade Music user found</Text>
+                  <Text style={styles.noResultsSub}>Tap to invite them by email →</Text>
+                </View>
+              </TouchableOpacity>
             )}
 
-            {/* Email invite row */}
-            {showInviteEmail && (
-              <View style={styles.dropdown}>
-                <TouchableOpacity
-                  style={styles.dropdownRow}
-                  onPress={() => inviteByEmail(artistQuery)}
-                  activeOpacity={0.75}
-                >
-                  <View style={[styles.dropdownAvatar, styles.inviteAvatarBg]}>
-                    <Ionicons name="mail-outline" size={16} color={Colors.purple.light} />
-                  </View>
-                  <View style={styles.dropdownInfo}>
-                    <Text style={styles.dropdownName}>Invite "{artistQuery.trim()}"</Text>
-                    <Text style={styles.dropdownSub}>They'll receive an email invitation</Text>
-                  </View>
-                  <Ionicons name="add-circle-outline" size={18} color={Colors.purple.light} />
-                </TouchableOpacity>
+            {/* Inline invite panel — expands when bubble is tapped */}
+            {showInvitePanel && (
+              <View style={styles.invitePanel}>
+                <View style={styles.invitePanelHeader}>
+                  <Ionicons name="mail-outline" size={16} color={Colors.purple.light} />
+                  <Text style={styles.invitePanelTitle}>Invite by email</Text>
+                  <TouchableOpacity onPress={() => { setShowInvitePanel(false); setInviteEmail(''); }}>
+                    <Ionicons name="close" size={18} color={Colors.text.muted} />
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.inviteInputRow}>
+                  <TextInput
+                    ref={inviteInputRef}
+                    style={styles.inviteInput}
+                    placeholder="artist@email.com"
+                    placeholderTextColor={Colors.text.muted}
+                    value={inviteEmail}
+                    onChangeText={setInviteEmail}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    onSubmitEditing={sendInvite}
+                    returnKeyType="send"
+                  />
+                  <TouchableOpacity
+                    style={[styles.sendBtn, !isEmail(inviteEmail) && styles.sendBtnDisabled]}
+                    onPress={sendInvite}
+                    disabled={!isEmail(inviteEmail)}
+                  >
+                    <Text style={styles.sendBtnText}>Send</Text>
+                  </TouchableOpacity>
+                </View>
+                <Text style={styles.inviteNote}>
+                  They'll receive an email invitation to join Upgrade Music and confirm their slot.
+                </Text>
               </View>
             )}
           </Field>
@@ -653,9 +692,45 @@ const styles = StyleSheet.create({
   dropdownInfo: { flex: 1 },
   dropdownName: { color: Colors.text.primary, fontWeight: '600', fontSize: 14 },
   dropdownSub: { color: Colors.text.muted, fontSize: 12, marginTop: 1 },
-  dropdownEmpty: { padding: Spacing.md, alignItems: 'center' },
-  dropdownEmptyText: { color: Colors.text.secondary, fontSize: 14, fontWeight: '600', marginBottom: 4 },
-  dropdownEmptyHint: { color: Colors.text.muted, fontSize: 12 },
+  // No-results bubble
+  noResultsBubble: {
+    marginTop: 4, flexDirection: 'row', alignItems: 'center', gap: Spacing.md,
+    backgroundColor: '#1C1535',
+    borderWidth: 1, borderColor: Colors.purple.dim, borderRadius: Radius.md,
+    padding: Spacing.md,
+  },
+  noResultsIconWrap: {
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: Colors.purple.dim, alignItems: 'center', justifyContent: 'center',
+  },
+  noResultsText: { flex: 1 },
+  noResultsTitle: { color: Colors.text.primary, fontWeight: '600', fontSize: 14 },
+  noResultsSub: { color: Colors.purple.light, fontSize: 12, marginTop: 2 },
+
+  // Invite panel
+  invitePanel: {
+    marginTop: 4, backgroundColor: '#1C1535',
+    borderWidth: 1, borderColor: Colors.purple.DEFAULT, borderRadius: Radius.md,
+    padding: Spacing.md, gap: Spacing.sm,
+  },
+  invitePanelHeader: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+  },
+  invitePanelTitle: { color: Colors.purple.light, fontWeight: '700', fontSize: 14, flex: 1 },
+  inviteInputRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
+  inviteInput: {
+    flex: 1, backgroundColor: Colors.bg.surface,
+    borderWidth: 1, borderColor: Colors.purple.dim, borderRadius: Radius.md,
+    paddingHorizontal: Spacing.md, paddingVertical: 10,
+    color: Colors.text.primary, fontSize: 14,
+  },
+  sendBtn: {
+    backgroundColor: Colors.purple.DEFAULT, borderRadius: Radius.md,
+    paddingHorizontal: Spacing.base, paddingVertical: 10,
+  },
+  sendBtnDisabled: { backgroundColor: Colors.purple.dim },
+  sendBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  inviteNote: { color: Colors.text.muted, fontSize: 11, lineHeight: 16 },
 
   // Genre chips
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
