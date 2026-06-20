@@ -1,56 +1,181 @@
-# Welcome to your Expo app 👋
+# Upgrade Music — React Native App
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+A live event song-request platform where guests bid on songs in real-time. Built with Expo SDK 54 / React Native, powered by Supabase and Stripe.
 
-## Get started
+---
 
-1. Install dependencies
+## Tech Stack
 
-   ```bash
-   npm install
-   ```
+| Layer | Technology |
+|---|---|
+| Framework | Expo SDK 54 · expo-router v6 |
+| Language | TypeScript |
+| Backend | Supabase (Postgres + Edge Functions + Realtime) |
+| Payments | Stripe (React Native SDK) |
+| Auth | Supabase Auth — Google OAuth + email/password |
+| Maps | react-native-maps (native) · Google Maps Static API (web) |
+| Venue Search | react-native-google-places-autocomplete (native) · Google Maps JS SDK (web) |
+| Styling | NativeWind v4 (TailwindCSS) + StyleSheet |
+| State | Zustand |
 
-2. Start the app
+---
 
-   ```bash
-   npx expo start
-   ```
+## Prerequisites
 
-In the output, you'll find options to open the app in a
+- Node 18+
+- Expo Go app on your phone (iOS or Android)
+- A Supabase project
+- A Stripe account
+- A Google Cloud project with Maps, Places, and Static Maps APIs enabled
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+---
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+## Setup
 
-## Get a fresh project
-
-When you're ready, run:
+### 1. Clone & install
 
 ```bash
-npm run reset-project
+git clone https://github.com/upgrademusic/Upgrade-Music-RN.git
+cd Upgrade-Music-RN
+npm install --legacy-peer-deps
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+### 2. Environment variables
 
-### Other setup steps
+Create `.env.local` in the project root:
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+```env
+EXPO_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+EXPO_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
+EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_...
+EXPO_PUBLIC_GOOGLE_MAPS_API_KEY=AIza...
+```
 
-## Learn more
+### 3. Start the dev server
 
-To learn more about developing your project with Expo, look at the following resources:
+```bash
+npx expo start --clear
+```
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+Scan the QR code with Expo Go to run on your device, or open `http://localhost:8081` in a browser.
 
-## Join the community
+---
 
-Join our community of developers creating universal apps.
+## Project Structure
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+```
+src/
+├── app/
+│   ├── (auth)/             # Login, onboarding
+│   └── (app)/
+│       ├── (home)/         # Home feed — stories, live events, discover
+│       ├── (search)/       # Search — songs, artists, events, videos
+│       ├── (event)/        # Create hub — event, playlist, media upload
+│       ├── (inbox)/        # Inbox / activity
+│       └── (profile)/      # Profile — Guest / DJ / Venue modes
+├── components/
+│   ├── VenueMap.tsx            # Web: Static Maps image
+│   ├── VenueMap.native.tsx     # Native: react-native-maps MapView
+│   ├── VenueSearch.tsx         # Web: Google Maps JS SDK autocomplete
+│   └── VenueSearch.native.tsx  # Native: GooglePlacesAutocomplete
+├── constants/
+│   └── theme.ts            # Colors, Spacing, Radius tokens
+├── hooks/
+│   ├── useEventQueue.ts    # Realtime song request queue
+│   └── useSongSearch.ts    # Spotify search via edge function
+├── lib/
+│   ├── supabase.ts
+│   ├── auth-storage.native.ts / .web.ts
+│   └── stripe-provider.native.tsx / .web.tsx
+└── store/
+    └── auth.ts             # Zustand: session, user, role
+```
+
+---
+
+## Key Features
+
+### For Guests
+- Browse live events and bid on songs in real-time
+- Boost songs already in the queue
+- View personal bid history and spending on the profile
+
+### For DJs
+- Create events with venue autocomplete (Google Places), date/time pickers, genre chips, artist invitations
+- Invite artists by searching existing Upgrade Music users or by email
+- View hosted events, total revenue, and per-event earnings in DJ profile mode
+
+### For Venues
+- Manage events hosted at the venue
+- Track revenue and venue payout (25% of total bids)
+
+---
+
+## Supabase Edge Functions
+
+| Function | Purpose |
+|---|---|
+| `spotify-search` | Proxies Spotify API song search |
+| `create-payment-intent` | Creates Stripe PaymentIntent for a bid |
+| `send-artist-invite` | Sends React Email invitation to performing artists |
+| `process-email-queue` | Processes the transactional email queue |
+
+---
+
+## Database Schema (key tables)
+
+| Table | Description |
+|---|---|
+| `profiles` | User profiles — display_name, username, bio, avatar_url, city |
+| `user_roles` | Role per user: guest · dj · venue · admin |
+| `user_followers` | Follow graph — follower_id → following_id |
+| `events` | Events with DJ, venue, genre, bid settings |
+| `event_artists` | Artists performing at an event (invite flow) |
+| `songs` | Song catalogue from Spotify |
+| `song_requests` | Individual bid/boost requests |
+| `request_groups` | Grouped bids per song per event |
+| `payments` | Stripe payment records — DJ 50% / Venue 25% / Platform 25% |
+| `payouts` | Stripe transfer records per recipient |
+| `venues` | Venue records with Google Maps location (lat/lng) |
+
+---
+
+## Platform Notes
+
+### Native (Expo Go / dev build)
+- Full Google Places autocomplete for venue search
+- Interactive dark-styled MapView for venue preview
+- Native date/time pickers (bottom sheet modal on iOS)
+- Stripe payment sheet
+
+### Web (localhost:8081)
+- Google Maps JS SDK autocomplete (same Places API, loaded via script injection)
+- Static Maps API image for venue preview (dark-styled to match app theme)
+- Web stubs for native-only packages via `.native.tsx` / `.tsx` platform extensions
+
+---
+
+## Commands
+
+```bash
+npx expo start           # Start Metro bundler
+npx expo start --clear   # Clear Metro cache (use after npm install)
+npx tsc --noEmit         # TypeScript type-check
+npm install --legacy-peer-deps  # Install packages (always use this flag)
+```
+
+---
+
+## Design Tokens
+
+| Token | Value |
+|---|---|
+| Background deep | `#0D0B1A` |
+| Background base | `#1A1035` |
+| Surface | `#221845` |
+| Card | `#2A1F55` |
+| Accent purple | `#9B7BFF` |
+| Accent light | `#B794FF` |
+| Text primary | `#FFFFFF` |
+| Text secondary | `#B0A8D0` |
+| Text muted | `#6B6285` |
